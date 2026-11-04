@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>信号待ちの車間 GIF</title>
+<style>
+:root{
+  --bg:#F1F2ED; --surface:#FAFAF6; --ink:#191C18; --ink-2:#40453F; --muted:#6B7069;
+  --rule:#D5D8CE; --go:#10715A; --stop:#A5372C;
+  --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+  --serif:"Hiragino Mincho ProN","Yu Mincho",serif;
+  --mono:"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#131512; --surface:#1C1F1B; --ink:#E8EAE3; --ink-2:#C0C4BA; --muted:#929789;
+    --rule:#2F332B; --go:#46B491; --stop:#D9765F;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131512; --surface:#1C1F1B; --ink:#E8EAE3; --ink-2:#C0C4BA; --muted:#929789;
+  --rule:#2F332B; --go:#46B491; --stop:#D9765F;
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); line-height:1.7}
+.wrap{max-width:1100px; margin:0 auto; padding:32px 16px 80px}
+.eyebrow{font-family:var(--mono); font-size:.72rem; letter-spacing:.12em; color:var(--muted); margin:0 0 10px}
+h1{font-family:var(--serif); font-weight:600; font-size:clamp(1.5rem,4vw,2.2rem); line-height:1.3; margin:0}
+.lede{color:var(--ink-2); margin:14px 0 0; max-width:62ch; font-size:.95rem}
+.controls{display:flex; flex-wrap:wrap; gap:18px; margin:28px 0 0; padding:0 0 18px; border-bottom:1px solid var(--rule)}
+.group{display:flex; flex-wrap:wrap; align-items:center; gap:6px}
+.group b{font-family:var(--mono); font-size:.72rem; color:var(--muted); font-weight:500; margin-right:4px}
+button{font-family:var(--mono); font-size:.8rem; color:var(--ink-2); background:var(--surface);
+  border:1px solid var(--rule); border-radius:2px; padding:6px 11px; cursor:pointer; min-height:36px}
+button[aria-pressed="true"]{border-color:var(--go); color:var(--go); font-weight:600}
+button:focus-visible{outline:2px solid var(--go); outline-offset:2px}
+figure{margin:24px 0 0; padding:12px; background:#fff; border:1px solid var(--rule); border-radius:2px}
+figure img{display:block; width:100%; height:auto}
+figcaption{font-family:var(--mono); font-size:.75rem; color:var(--muted); margin:10px 2px 0}
+.note{margin:28px 0 0; padding:14px 16px; border-left:3px solid var(--go); background:var(--surface);
+  font-size:.88rem; color:var(--ink-2)}
+.legend{display:grid; grid-template-columns:auto 1fr; gap:4px 10px; margin:8px 0 0; font-size:.85rem}
+.sw{width:22px; height:12px; margin-top:6px; border:1px solid var(--rule)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">TECHBOOKFEST / 交通セルオートマトン</p>
+  <h1>信号待ち、前の車とどれだけ空けるべきか</h1>
+  <p class="lede">本文のシミュレーションをアニメーションにしたもの。セルオートマトンの格子（1 セル = 0.5 m）をそのまま描いている。
+    赤線が停止線で、青になってから列がどう捌けるかを比べられる。</p>
+
+  <div class="controls">
+    <div class="group" id="g-n"><b>台数</b></div>
+    <div class="group" id="g-mode"><b>比べる軸</b></div>
+    <div class="group" id="g-val"><b id="val-label">固定する値</b></div>
+  </div>
+
+  <figure>
+    <img id="gif" alt="" src="">
+    <figcaption id="cap"></figcaption>
+  </figure>
+
+  <div class="note">
+    <strong>セルの色</strong>
+    <div class="legend">
+      <span class="sw" style="background:#eeefee"></span><span>空きセル（信号が見えない）</span>
+      <span class="sw" style="background:#c3e3d1"></span><span>空きセル（信号が見える）</span>
+      <span class="sw" style="background:#9aa1a6"></span><span>車：まだ反応していない</span>
+      <span class="sw" style="background:#d9a441"></span><span>車：発進を認識したが前が詰まっている</span>
+      <span class="sw" style="background:#2f6f9f"></span><span>車：走行中</span>
+    </div>
+  </div>
+</div>
+<script>
+const N = [5, 10, 20];
+const MODES = {
+  gap: { label: "車間を固定（視認距離を並べる）", fix: "停止時の車間",
+         vals: [0, 1.5, 3, 4.5, 6], file: v => `gap-${v.toFixed(1).padStart(4, "0")}m.gif`, unit: v => `${v.toFixed(1)} m` },
+  vis: { label: "視認距離を固定（車間を並べる）", fix: "視認距離",
+         vals: [30, 60, 100, 200, 400], file: v => `vis-${String(v).padStart(3, "0")}m.gif`, unit: v => `${v} m` },
+};
+let state = { n: 20, mode: "vis", v: 400 };
+try {
+  const q = new URLSearchParams(location.search);
+  if (q.has("n")) state.n = +q.get("n");
+  if (q.has("mode")) state.mode = q.get("mode");
+  if (q.has("v")) state.v = +q.get("v");
+  if (!N.includes(state.n) || !MODES[state.mode] || !MODES[state.mode].vals.includes(state.v))
+    state = { n: 20, mode: "vis", v: 400 };
+} catch (e) {}
+
+function buttons(id, items, cur, onPick) {
+  const g = document.getElementById(id);
+  g.querySelectorAll("button").forEach(b => b.remove());
+  items.forEach(([key, text]) => {
+    const b = document.createElement("button");
+    b.textContent = text;
+    b.setAttribute("aria-pressed", String(key === cur));
+    b.onclick = () => onPick(key);
+    g.appendChild(b);
+  });
+}
+function render() {
+  const m = MODES[state.mode];
+  buttons("g-n", N.map(n => [n, `${n} 台`]), state.n, n => { state.n = n; render(); });
+  buttons("g-mode", Object.entries(MODES).map(([k, o]) => [k, o.label]), state.mode,
+          k => { state.mode = k; state.v = MODES[k].vals[MODES[k].vals.length - 1]; render(); });
+  document.getElementById("val-label").textContent = m.fix;
+  buttons("g-val", m.vals.map(v => [v, m.unit(v)]), state.v, v => { state.v = v; render(); });
+  const src = `gif/n${String(state.n).padStart(2, "0")}/${m.file(state.v)}`;
+  const img = document.getElementById("gif");
+  img.src = src;
+  img.alt = `${state.n} 台、${m.fix} ${m.unit(state.v)} 固定のシミュレーション`;
+  document.getElementById("cap").textContent = `${state.n} 台 ／ ${m.fix} ${m.unit(state.v)} 固定 ／ ${src}`;
+  try { history.replaceState(null, "", `?n=${state.n}&mode=${state.mode}&v=${state.v}`); } catch (e) {}
+}
+render();
+</script>
+</body>
+</html>
